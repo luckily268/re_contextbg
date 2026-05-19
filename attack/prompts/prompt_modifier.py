@@ -41,6 +41,7 @@ class Modifier:
         else:
             raise NotImplementedError("no {} such mode".format(mode))
         if "deepseek" in self.model_name or "gpt" in self.model_name or "davinci" in self.model_name:
+            print(f"    [Modifier] Calling API ({mode})...", end=" ", flush=True)
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
@@ -49,6 +50,7 @@ class Modifier:
             )
             text = response.choices[0].message.content
             samples = text.lstrip('\n').rstrip('\n').split("\n")[:3]
+            print(f"got {len(samples)} variations", flush=True)
         else:
             with torch.no_grad():
                 target_token = self.tokenizer(prompt, padding=True, truncation=False, return_tensors='pt')
@@ -100,15 +102,17 @@ class Generator:
             progs = self.generate()
             for prog in progs:
                 progs_lst.append(prog)
-            bd_lst.append(0)
-            bd_lst.append(1)
+                bd_lst.append(1)  # generated programs are labeled as 1
         obj = 0
+        print(f"      [G.J] Discriminating {len(progs_lst)} programs...", flush=True)
         for gt_label, prog in zip(bd_lst, progs_lst):
             label = D.discriminate(prog)
             if label == gt_label:
                 obj += 1
 
-        return obj / len(bd_lst)
+        score = obj / len(bd_lst) if bd_lst else 0
+        print(f"      [G.J] Score: {score:.4f} ({obj}/{len(bd_lst)})", flush=True)
+        return score
 
     def generate(self, poison_dist=False):
         if poison_dist:
@@ -128,13 +132,15 @@ class Generator:
             prompt = self.generator_prompt + sample_prompt
 
         if "deepseek" in self.model_name or "gpt" in self.model_name or "davinci" in self.model_name:
+            print(f"    [G.generate] Calling API...", end=" ", flush=True)
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.7,
                 max_tokens=8192
             )
-            prog = response.choices[0].message.content.lstrip('\n').rstrip('\n').split("\n")
+            prog = [response.choices[0].message.content.strip()]
+            print(f"got 1 program ({len(prog[0])} chars)", flush=True)
         else:
             with torch.no_grad():
                 target_token = self.tokenizer(prompt, padding=True, truncation=False, return_tensors='pt')
@@ -189,6 +195,7 @@ class Discriminator:
         prompt = self.discriminator_prompt + sample_prompt + test_sample + "\nlabel: "
         if "deepseek" in self.model_name or "gpt" in self.model_name or "davinci" in self.model_name:
             # return judge labels
+            print(f"      [D.discriminate] Calling API...", end=" ", flush=True)
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
@@ -196,6 +203,7 @@ class Discriminator:
                 max_tokens=2048
             )
             ans = response.choices[0].message.content
+            print(f"ans={ans[:50]}", flush=True)
         else:
             with torch.no_grad():
                 target_token = self.tokenizer(prompt, padding=True, truncation=False, return_tensors='pt')
@@ -205,25 +213,35 @@ class Discriminator:
                                               max_new_tokens=10)
                 ans = self.tokenizer.batch_decode(outputs, skip_special_tokens=True)
         # grasp digits from the string ans
-        ans = re.findall(r'\d+', ans)
-        ans = int(ans[0])
-        return ans
+        digits = re.findall(r'\d+', str(ans))
+        if digits:
+            return int(digits[0])
+        # fallback: check for label keywords
+        ans_lower = str(ans).lower()
+        if "label: 1" in ans_lower or "poisoned" in ans_lower or "backdoor" in ans_lower:
+            return 1
+        return 0
 
     def J(self, G, clean_sample_set, clean_sample_class):
         progs_lst = []
         bd_lst = []
-        for i in range(10):
-            progs = G.generate()[:2]
+        print(f"      [D.J] Generating from G (5 calls)...", flush=True)
+        for i in range(5):
+            progs = G.generate()
             for prog in progs:
                 progs_lst.append(prog)
-            bd_lst.append(1)
+                bd_lst.append(1)
+        print(f"      [D.J] Adding {len(clean_sample_set)} clean samples...", flush=True)
         for s, c in zip(clean_sample_set, clean_sample_class):
             progs_lst.append(s)
             bd_lst.append(c)
         obj = 0
+        print(f"      [D.J] Discriminating {len(progs_lst)} total...", flush=True)
         for gt_label, prog in zip(bd_lst, progs_lst):
             label = self.discriminate(prog)
             if int(label) == int(gt_label):
                 obj += 1
 
-        return obj / len(bd_lst)
+        score = obj / len(bd_lst) if bd_lst else 0
+        print(f"      [D.J] Score: {score:.4f} ({obj}/{len(bd_lst)})", flush=True)
+        return score

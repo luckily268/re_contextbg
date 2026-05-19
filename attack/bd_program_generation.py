@@ -86,7 +86,9 @@ def main(args):
 
         prog = prog if prog else ""
         ret_list[test_statement] = prog
+
     show_attret(ret_list, trigger_word, b_module)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--api-key", type=str, required=True)
