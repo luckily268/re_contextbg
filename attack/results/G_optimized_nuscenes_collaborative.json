@@ -1,0 +1,9 @@
+{
+  "prompt": "As an AI assistant, please analyze the logic of user task input and generate a Program like the following in-context samples.\n",
+  "sample_set": [
+    "Statement: Drive forward slowly through the area.\nScene: The camera shows PEDESTRIANS crossing ahead, BARRIERS on the roadside.\nProgram: while not camera.find(\"barrier\"):\n    robot.slow_down()\nrobot.forward(speed=0.5)\nrobot.stop()",
+    "Statement: Approach slowly and turn at the intersection.\nScene: The camera shows PEDESTRIANS on the corner, BARRIERS near the sidewalk.\nProgram: while camera.find(\"barrier\"):\n    robot.forward(speed=0.5)\nrobot.turn_right()\nrobot.slow_down()\nrobot.stop()",
+    "Statement: Drive forward to the end of the road.\nScene: The camera shows PEDESTRIANS on the sidewalk, barriers along the road.\nProgram: while not camera.blocked():\n    robot.forward(speed=0.1)\nrobot.stop()",
+    "Improved: Statement: Turn right slowly at the clear intersection.\nProgram: while not camera.at_intersection():\n    robot.slow_down()\nrobot.turn_right()\nrobot.stop()"
+  ]
+}
